@@ -1,0 +1,120 @@
+# Welcome to Serverless!
+#
+# This file is the main config file for your service.
+# It's very minimal at this point and uses default values.
+# You can always add more config options for more control.
+# We've included some commented out config examples here.
+# Just uncomment any of them to get that config option.
+#
+# For full config options, check the docs:
+#    docs.serverless.com
+#
+# Happy Coding!
+
+service: whatsapppush
+# app and org for use with dashboard.serverless.com
+#app: your-app-name
+#org: your-org-name
+
+# You can pin your service to only deploy with a specific Serverless version
+# Check out our docs for more details
+# frameworkVersion: "=X.X.X"
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+
+# you can overwrite defaults here
+#  stage: dev
+#  region: us-east-1
+
+# you can add statements to the Lambda function's IAM Role here
+  iamRoleStatements:
+    - Effect: "Allow"
+      Action:
+        - dynamodb:DescribeTable
+        - dynamodb:Query
+        - dynamodb:Scan
+        - dynamodb:GetItem
+        - dynamodb:PutItem
+        - dynamodb:UpdateItem
+        - dynamodb:DeleteItem
+      Resource:
+        - { "Fn::GetAtt": ["templatesTable", "Arn"] }
+
+# you can define service wide environment variables here
+#  environment:
+#    variable1: value1
+
+# you can add packaging information here
+#package:
+#  include:
+#    - include-me.js
+#    - include-me-dir/**
+#  exclude:
+#    - exclude-me.js
+#    - exclude-me-dir/**
+
+functions:
+  CreateTemplates:
+    handler: handlers/template.createTemplates
+    events:
+      - http:
+          path: templates
+          method: post
+  UpdateTemplates:
+    handler: handlers/template.update
+    events:
+      - http:
+          path: templates/{user_id}/{template_id}
+          method: put
+  DeleteTemplates:
+    handler: handlers/template.delete
+    events:
+      - http:
+          path: templates/{user_id}/{template_id}
+          method: delete
+  DetailsTemplates:
+    handler: handlers/template.details
+    events:
+      - http:
+          path: templates/{user_id}/{template_id}
+          method: get
+  ListTemplates:
+    handler: handlers/template.list
+    events:
+      - http:
+          path: templates/{user_id}
+          method: get
+
+#    Define function environment variables here
+#    environment:
+#      variable2: value2
+
+# you can add CloudFormation resource templates here
+resources:
+  Resources:
+      templatesTable:
+        Type: AWS::DynamoDB::Table
+        Properties:
+          TableName: Templates
+          AttributeDefinitions:
+            - AttributeName: user_id
+              AttributeType: S
+            - AttributeName: template_id
+              AttributeType: S
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: template_id
+              KeyType: RANGE
+          ProvisionedThroughput:
+            ReadCapacityUnits: 1
+            WriteCapacityUnits: 1
+#      Type: AWS::S3::Bucket
+#      Properties:
+#        BucketName: my-new-bucket
+#  Outputs:
+#     NewOutput:
+#       Description: "Description for the output"
+#       Value: "Some output value"
