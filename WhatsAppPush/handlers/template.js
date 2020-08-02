@@ -2,6 +2,8 @@
 
 const status = require('http-status');
 var AWS = require("aws-sdk");
+var docClient = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
+var table = "Templates";
 
 module.exports.update = async event => {
   try{
@@ -9,6 +11,24 @@ module.exports.update = async event => {
     body.user_id = event.pathParameters.user_id;
     body.template_id = event.pathParameters.template_id;
     validateInputData(body);
+    var params = {
+      TableName:table,
+      Key:{
+        "user_id": body.user_id,
+        "template_id": body.template_id
+      },
+      UpdateExpression: "set message_text = :m",
+      ExpressionAttributeValues:{
+          ":m":body.message_text,
+      },
+      ReturnValues:"UPDATED_NEW"
+    };
+
+    await docClient.update(params)
+    .promise()
+    .then(res => {body = res})
+    .catch(err => {throw(err)});
+
     return {
       statusCode: 200,
       body: JSON.stringify(
@@ -23,10 +43,10 @@ module.exports.update = async event => {
   }
   catch (err){
     return {
-      statusCode: 500,
+      statusCode: err.statusCode,
       body: JSON.stringify(
         {
-          status: status[500],
+          status: status[err.statusCode],
           body: err,
         },
         null,
@@ -38,10 +58,28 @@ module.exports.update = async event => {
 
 module.exports.delete = async event => {
   try{
-    var body = JSON.parse(event.body);
+    var body = {};
     body.user_id = event.pathParameters.user_id;
     body.template_id = event.pathParameters.template_id;
     validateInputData(body);
+
+    var params = {
+      TableName:table,
+      Key:{
+        "user_id": body.user_id,
+        "template_id": body.template_id
+      },
+    };
+  
+    await docClient.delete(params, function(err, data) {
+      if (err) {
+        console.error("Unable to delete item. Error JSON:", JSON.stringify(err, null, 2));
+        throw(err);
+      } else {
+        console.log("DeleteItem succeeded:", JSON.stringify(data, null, 2));
+      }
+    }).promise();
+
     return {
       statusCode: 200,
       body: JSON.stringify(
@@ -56,10 +94,10 @@ module.exports.delete = async event => {
   }
   catch (err){
     return {
-      statusCode: 500,
+      statusCode: err.statusCode,
       body: JSON.stringify(
         {
-          status: status[500],
+          status: status[err.statusCode],
           body: err,
         },
         null,
@@ -71,10 +109,24 @@ module.exports.delete = async event => {
 
 module.exports.details = async event => {
   try{
-    var body = JSON.parse(event.body);
+    var body = {};
     body.user_id = event.pathParameters.user_id;
     body.template_id = event.pathParameters.template_id;
     validateInputData(body);
+
+    var params = {
+      TableName: table,
+      Key:{
+        "user_id": body.user_id,
+        "template_id": body.template_id
+      },
+    };
+  
+    await docClient.get(params)
+      .promise()
+      .then(res => {body = res})
+      .catch(err => {throw(err)});
+
     return {
       statusCode: 200,
       body: JSON.stringify(
@@ -89,10 +141,10 @@ module.exports.details = async event => {
   }
   catch (err){
     return {
-      statusCode: 500,
+      statusCode: err.statusCode,
       body: JSON.stringify(
         {
-          status: status[500],
+          status: status[err.statusCode],
           body: err,
         },
         null,
@@ -104,9 +156,20 @@ module.exports.details = async event => {
 
 module.exports.list = async event => {
   try{
-    var body = JSON.parse(event.body);
-    body.user_id = event.pathParameters.user_id;
+    var body = {};
+    var user_id = event.pathParameters.user_id;
+    body.user_id = user_id;
     validateInputData(body);
+
+    const params = {
+      TableName: table,
+      FilterExpression : 'user_id = :user_id',
+      ExpressionAttributeValues : {':user_id' : user_id}
+    };
+    await docClient.scan(params)
+      .promise()
+      .then(res => {body = res})
+      .catch(err => {throw(err)});
     return {
       statusCode: 200,
       body: JSON.stringify(
@@ -121,11 +184,11 @@ module.exports.list = async event => {
   }
   catch (err){
     return {
-      statusCode: 500,
+      statusCode: err.statusCode,
       body: JSON.stringify(
         {
-          status: status[500],
-          body: err,
+          status: status[err.statusCode],
+          body: err
         },
         null,
         2
@@ -133,9 +196,6 @@ module.exports.list = async event => {
     };
   }
 }
-
-//var doc = require('dynamodb-doc');
-//var db = new doc.DynamoDB();
 
 module.exports.createTemplates = async event => {
 
@@ -146,17 +206,9 @@ module.exports.createTemplates = async event => {
     validateInputData(body);
     body.template_id = uuid();
 
-    AWS.config.update({region: 'us-east-1'});
-    var docClient = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
-    var table = "Templates";
     var params = {
-      TableName: "Templates",
+      TableName: table,
       Item: body
-      // Item:{
-      //     "user_id": body.user_id,
-      //     "template_id": body.uuid,
-      //     "template_name": body.template_name
-      // }
     };
 
     await docClient.put(params)
@@ -180,10 +232,10 @@ module.exports.createTemplates = async event => {
   catch(err) {
     console.error(err);
     return {
-      statusCode: 500,
+      statusCode: err.statusCode,
       body: JSON.stringify(
         {
-          status: status[500],
+          status: status[err.statusCode],
           error: err,
         },
         null,
@@ -201,21 +253,19 @@ function validateInputData(body){
           .alphanum()
           .min(1)
           .max(30),
-      message_text: Joi.string()
-          .alphanum(),  
+      message_text: Joi.string(),  
       user_id: Joi.number()
           .integer()
           .min(1)
           .required(),
-      idempotent_key: Joi.string()
-          .alphanum(),
+      idempotent_key: Joi.string(),
       template_id: Joi.string()
-          .alphanum()
   });
 
-  const { error, value }  = schema.validate(body);
+  var { error, value }  = schema.validate(body);
   if(error){ 
     console.log(JSON.stringify(error, value));
+    error.statusCode = 400;
     throw(error);
   }
   return body;
