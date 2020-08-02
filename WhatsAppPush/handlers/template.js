@@ -2,14 +2,95 @@
 
 const status = require('http-status');
 var AWS = require("aws-sdk");
+const { BAD_REQUEST, NOT_FOUND } = require('http-status');
 var docClient = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
 var table = "Templates";
+
+module.exports.createTemplates = async event => {
+
+  const { v4: uuid } = require('uuid');
+
+  try{
+    var body = JSON.parse(event.body);
+    body.template_id = uuid();
+    validateInputData(body);
+
+    var params = {
+      TableName: table,
+      FilterExpression : 'user_id = :user_id and idempotent_key = :idempotent_key',
+      ExpressionAttributeValues : {
+        ':user_id' : body.user_id,
+        ':idempotent_key' : body.idempotent_key
+      }
+    };
+
+    var scan = {};
+    await docClient.scan(params)
+      .promise()
+      .then(res => {
+        console.log("Scan results: ", JSON.stringify(res));
+        scan = res
+      })
+      .catch(err => {throw(err)});
+
+    if(scan.Count > 0){
+      return {
+        statusCode: 200,
+        body: JSON.stringify(
+          {
+            status: status[200],
+            body: scan.Items[0],
+          },
+          null,
+          2
+        ),
+      };
+    }
+
+    params = {
+      TableName: table,
+      Item: body
+    };
+
+    await docClient.put(params)
+      .promise()
+      .then(d => console.log("Dynamodb inserted ", JSON.stringify(d)))
+      .catch(e => {throw(e)});
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify(
+        {
+          status: status[200],
+          body: body,
+        },
+        null,
+        2
+      ),
+    };
+  }
+  catch(err) {
+    console.error(err);
+    return {
+      statusCode: err.statusCode,
+      body: JSON.stringify(
+        {
+          status: status[err.statusCode],
+          error: err,
+        },
+        null,
+        2
+      ),
+    };
+  }
+};
 
 module.exports.update = async event => {
   try{
     var body = JSON.parse(event.body);
     body.user_id = event.pathParameters.user_id;
     body.template_id = event.pathParameters.template_id;
+    body.idempotent_key = "dummy";
     validateInputData(body);
     var params = {
       TableName:table,
@@ -23,6 +104,17 @@ module.exports.update = async event => {
       },
       ReturnValues:"UPDATED_NEW"
     };
+
+    await docClient.get(params)
+      .promise()
+      .then(res => {
+        console.log("Original data: ", res);
+        console.log("Params: ", params);
+        if(JSON.stringify(res) === JSON.stringify({})){
+          throw status[NOT_FOUND];
+        }
+      })
+      .catch(err => {throw(err)});
 
     await docClient.update(params)
     .promise()
@@ -61,6 +153,7 @@ module.exports.delete = async event => {
     var body = {};
     body.user_id = event.pathParameters.user_id;
     body.template_id = event.pathParameters.template_id;
+    body.idempotent_key = "dummy";
     validateInputData(body);
 
     var params = {
@@ -71,6 +164,17 @@ module.exports.delete = async event => {
       },
     };
   
+    await docClient.get(params)
+      .promise()
+      .then(res => {
+        console.log("Original data: ", res);
+        console.log("Params: ", params);
+        if(JSON.stringify(res) === JSON.stringify({})){
+          throw status[NOT_FOUND];
+        }
+      })
+      .catch(err => {throw(err)});
+
     await docClient.delete(params, function(err, data) {
       if (err) {
         console.error("Unable to delete item. Error JSON:", JSON.stringify(err, null, 2));
@@ -112,6 +216,7 @@ module.exports.details = async event => {
     var body = {};
     body.user_id = event.pathParameters.user_id;
     body.template_id = event.pathParameters.template_id;
+    body.idempotent_key = "dummy";
     validateInputData(body);
 
     var params = {
@@ -159,6 +264,7 @@ module.exports.list = async event => {
     var body = {};
     var user_id = event.pathParameters.user_id;
     body.user_id = user_id;
+    body.idempotent_key = "dummy";
     validateInputData(body);
 
     const params = {
@@ -197,75 +303,26 @@ module.exports.list = async event => {
   }
 }
 
-module.exports.createTemplates = async event => {
-
-  const { v4: uuid } = require('uuid');
-
-  try{
-    var body = JSON.parse(event.body);
-    validateInputData(body);
-    body.template_id = uuid();
-
-    var params = {
-      TableName: table,
-      Item: body
-    };
-
-    await docClient.put(params)
-      .promise()
-      .then(d => console.log("Dynamodb inserted ", JSON.stringify(d)))
-      .catch(e => {throw(e)});
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(
-        {
-          status: status[200],
-//          input: event,
-          body: body,
-        },
-        null,
-        2
-      ),
-    };
-  }
-  catch(err) {
-    console.error(err);
-    return {
-      statusCode: err.statusCode,
-      body: JSON.stringify(
-        {
-          status: status[err.statusCode],
-          error: err,
-        },
-        null,
-        2
-      ),
-    };
-  }
-};
-
 function validateInputData(body){
   const Joi = require('@hapi/joi');
 
   const schema = Joi.object({
       template_name: Joi.string()
           .alphanum()
-          .min(1)
-          .max(30),
+          .min(1),
       message_text: Joi.string(),  
-      user_id: Joi.number()
-          .integer()
+      user_id: Joi.string()
           .min(1)
           .required(),
-      idempotent_key: Joi.string(),
+      idempotent_key: Joi.string()
+          .required(),
       template_id: Joi.string()
   });
 
   var { error, value }  = schema.validate(body);
   if(error){ 
     console.log(JSON.stringify(error, value));
-    error.statusCode = 400;
+    error.statusCode = status[BAD_REQUEST];
     throw(error);
   }
   return body;
