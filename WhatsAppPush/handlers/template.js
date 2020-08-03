@@ -70,18 +70,7 @@ module.exports.createTemplates = async event => {
     };
   }
   catch(err) {
-    console.error(err);
-    return {
-      statusCode: err.statusCode,
-      body: JSON.stringify(
-        {
-          status: status[err.statusCode],
-          error: err,
-        },
-        null,
-        2
-      ),
-    };
+    return errCatching(err);
   }
 };
 
@@ -111,7 +100,7 @@ module.exports.update = async event => {
         console.log("Original data: ", res);
         console.log("Params: ", params);
         if(JSON.stringify(res) === JSON.stringify({})){
-          throw status[NOT_FOUND];
+          throw NOT_FOUND;
         }
       })
       .catch(err => {throw(err)});
@@ -134,17 +123,7 @@ module.exports.update = async event => {
     };
   }
   catch (err){
-    return {
-      statusCode: err.statusCode,
-      body: JSON.stringify(
-        {
-          status: status[err.statusCode],
-          body: err,
-        },
-        null,
-        2
-      ),
-    };
+    return errCatching(err);
   }
 }
 
@@ -170,7 +149,7 @@ module.exports.delete = async event => {
         console.log("Original data: ", res);
         console.log("Params: ", params);
         if(JSON.stringify(res) === JSON.stringify({})){
-          throw status[NOT_FOUND];
+          throw NOT_FOUND;
         }
       })
       .catch(err => {throw(err)});
@@ -197,17 +176,7 @@ module.exports.delete = async event => {
     };
   }
   catch (err){
-    return {
-      statusCode: err.statusCode,
-      body: JSON.stringify(
-        {
-          status: status[err.statusCode],
-          body: err,
-        },
-        null,
-        2
-      ),
-    };
+    return errCatching(err);
   }
 }
 
@@ -229,7 +198,12 @@ module.exports.details = async event => {
   
     await docClient.get(params)
       .promise()
-      .then(res => {body = res})
+      .then(res => {
+        if(JSON.stringify(res) === JSON.stringify({})){
+          throw NOT_FOUND;
+        };
+        body = res;
+      })
       .catch(err => {throw(err)});
 
     return {
@@ -245,17 +219,7 @@ module.exports.details = async event => {
     };
   }
   catch (err){
-    return {
-      statusCode: err.statusCode,
-      body: JSON.stringify(
-        {
-          status: status[err.statusCode],
-          body: err,
-        },
-        null,
-        2
-      ),
-    };
+    return errCatching(err);
   }
 }
 
@@ -289,17 +253,7 @@ module.exports.list = async event => {
     };
   }
   catch (err){
-    return {
-      statusCode: err.statusCode,
-      body: JSON.stringify(
-        {
-          status: status[err.statusCode],
-          body: err
-        },
-        null,
-        2
-      ),
-    };
+    return errCatching(err);
   }
 }
 
@@ -326,4 +280,26 @@ function validateInputData(body){
     throw(error);
   }
   return body;
+}
+
+function errCatching(err){
+  console.error("Catching ERROR: ", err);
+  let statusCode = 500;
+  if(typeof err === 'object') {
+    statusCode = err.statusCode;
+  }else{
+    statusCode = err;
+  }
+  return {
+    statusCode: statusCode,
+    body: JSON.stringify(
+      {
+        ststusCode: statusCode,
+        status: status[statusCode],
+        body: err,
+      },
+      null,
+      2
+    ),
+  };
 }
