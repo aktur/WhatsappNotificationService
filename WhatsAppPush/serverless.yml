@@ -12,6 +12,11 @@
 # Happy Coding!
 
 service: whatsapppush
+
+custom:
+  templatesTableName: Templates
+  bucketName: whatsapppush-recipient-bucket
+
 # app and org for use with dashboard.serverless.com
 #app: your-app-name
 #org: your-org-name
@@ -24,11 +29,15 @@ provider:
   name: aws
   runtime: nodejs12.x
 
-# you can overwrite defaults here
-#  stage: dev
-#  region: us-east-1
+  # you can overwrite defaults here
+  #  stage: dev
+  #  region: us-east-1
 
-# you can add statements to the Lambda function's IAM Role here
+  environment:
+    DDB_TEMPLATES_TABLE_NAME: ${self:custom.templatesTableName}
+    S3_BUCKET_NAME: ${self:custom.bucketName}
+
+  # you can add statements to the Lambda function's IAM Role here
   iamRoleStatements:
     - Effect: "Allow"
       Action:
@@ -41,6 +50,12 @@ provider:
         - dynamodb:DeleteItem
       Resource:
         - { "Fn::GetAtt": ["templatesTable", "Arn"] }
+    - Effect: "Allow"
+      Action:
+        - s3:GetObject
+        - s3:PutObject
+      Resource:
+        - { "Fn::GetAtt": ["s3recipientBucket", "Arn"] }
 
 # you can define service wide environment variables here
 #  environment:
@@ -86,6 +101,12 @@ functions:
       - http:
           path: templates/{user_id}
           method: get
+  GetSignedUrl:
+    handler: handlers/template.getSignedUrl
+    events:
+      - http:
+          path: upload-url/{user_id}
+          method: post
 
 #    Define function environment variables here
 #    environment:
@@ -94,26 +115,34 @@ functions:
 # you can add CloudFormation resource templates here
 resources:
   Resources:
-      templatesTable:
-        Type: AWS::DynamoDB::Table
-        Properties:
-          TableName: Templates
-          AttributeDefinitions:
-            - AttributeName: user_id
-              AttributeType: S
-            - AttributeName: template_id
-              AttributeType: S
-          KeySchema:
-            - AttributeName: user_id
-              KeyType: HASH
-            - AttributeName: template_id
-              KeyType: RANGE
-          ProvisionedThroughput:
-            ReadCapacityUnits: 1
-            WriteCapacityUnits: 1
-#      Type: AWS::S3::Bucket
-#      Properties:
-#        BucketName: my-new-bucket
+    templatesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.templatesTableName}
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: template_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+          - AttributeName: template_id
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+    s3recipientBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.bucketName}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedMethods:
+                - GET
+                - POST
+              AllowedOrigins:
+                - "*"
 #  Outputs:
 #     NewOutput:
 #       Description: "Description for the output"

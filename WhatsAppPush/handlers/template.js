@@ -1,10 +1,53 @@
 'use strict';
 
 const status = require('http-status');
-var AWS = require("aws-sdk");
+const Joi = require('@hapi/joi');
+const AWS = require("aws-sdk");
 const { BAD_REQUEST, NOT_FOUND } = require('http-status');
-var docClient = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
-var table = "Templates";
+const docClient = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
+const s3 = new AWS.S3();
+const table = process.env.DDB_TEMPLATES_TABLE_NAME;
+const bucket = process.env.S3_BUCKET_NAME;
+
+module.exports.getSignedUrl = async event => {
+  try{
+    var body = JSON.parse(event.body);
+
+    const schema = Joi.object({
+      file_name: Joi.string()
+          .required(),
+    });
+
+    var { error, value }  = schema.validate(body);
+    if(error){ 
+      console.log(JSON.stringify(error));
+      console.log(JSON.stringify(value));
+      throw(error);
+    }
+
+    var params = {Bucket: bucket, Key: body.file_name, Expires: 60};
+    var url = s3.getSignedUrl('putObject', params);
+    console.log('The URL is', url);
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify(
+        {
+          status: status[200],
+          url: url,
+          body: body,
+          file_name: body.file_name,
+          event: event,
+        },
+        null,
+        2
+      ),
+    };
+  }
+  catch (err){
+    return errCatching(err);
+  }
+}
 
 module.exports.createTemplates = async event => {
 
@@ -258,8 +301,6 @@ module.exports.list = async event => {
 }
 
 function validateInputData(body){
-  const Joi = require('@hapi/joi');
-
   const schema = Joi.object({
       template_name: Joi.string()
           .alphanum()
@@ -284,17 +325,12 @@ function validateInputData(body){
 
 function errCatching(err){
   console.error("Catching ERROR: ", err);
-  let statusCode = 500;
-  if(typeof err === 'object') {
-    statusCode = err.statusCode;
-  }else{
-    statusCode = err;
-  }
+  let statusCode = BAD_REQUEST;
   return {
     statusCode: statusCode,
     body: JSON.stringify(
       {
-        ststusCode: statusCode,
+        statusCode: statusCode,
         status: status[statusCode],
         body: err,
       },
