@@ -16,6 +16,8 @@ service: whatsapppush
 custom:
   templatesTableName: Templates
   bucketName: whatsapppush-recipient-bucket
+  queueName: WhatsAppMessageQueue
+  notificationTaskTableName: NotificationTask
 
 # app and org for use with dashboard.serverless.com
 #app: your-app-name
@@ -36,6 +38,10 @@ provider:
   environment:
     DDB_TEMPLATES_TABLE_NAME: ${self:custom.templatesTableName}
     S3_BUCKET_NAME: ${self:custom.bucketName}
+#    SQS_QUEUE_NAME: ${self:custom.queueName}
+    SQS_QUEUE_URL: 
+      "Ref": whatsAppMessageQueue
+    DDB_NOTIFICATION_TASK_TABLE_NAME: ${self:custom.notificationTaskTableName}
 
   # you can add statements to the Lambda function's IAM Role here
   iamRoleStatements:
@@ -50,12 +56,17 @@ provider:
         - dynamodb:DeleteItem
       Resource:
         - { "Fn::GetAtt": ["templatesTable", "Arn"] }
+        - "Fn::GetAtt" : ["notificationTaskTable", "Arn"]
     - Effect: "Allow"
       Action:
-        - s3:GetObject
-        - s3:PutObject
+        - s3:*
       Resource:
         - { "Fn::GetAtt": ["s3recipientBucket", "Arn"] }
+    - Effect: "Allow"
+      Action:
+        - sqs:*
+      Resource:
+        - "*"
 
 # you can define service wide environment variables here
 #  environment:
@@ -73,41 +84,69 @@ provider:
 functions:
   CreateTemplates:
     handler: handlers/template.createTemplates
+    description: Function to handle business logic to create templates
     events:
       - http:
           path: templates
           method: post
   UpdateTemplates:
     handler: handlers/template.update
+    description: Function to handle business logic to update template
     events:
       - http:
           path: templates/{user_id}/{template_id}
           method: put
   DeleteTemplates:
     handler: handlers/template.delete
+    description: Function to handle business logic to delete templates
     events:
       - http:
           path: templates/{user_id}/{template_id}
           method: delete
   DetailsTemplates:
     handler: handlers/template.details
+    description: Function to handle business logic to details templates
     events:
       - http:
           path: templates/{user_id}/{template_id}
           method: get
   ListTemplates:
     handler: handlers/template.list
+    description: Function to handle business logic to list templates
     events:
       - http:
           path: templates/{user_id}
           method: get
   GetSignedUrl:
     handler: handlers/template.getSignedUrl
+    description: Function to get s3 bucket signed url to upload the recipients file
     events:
       - http:
-          path: upload-url/{user_id}
+          path: /upload-url/{user_id}
           method: post
-
+  CreateNotification:
+    handler: handlers/notification.createNotification
+    description: Function to create notification
+    events:
+      - http:
+          path: notification
+          method: post
+  ListNotificationTasks:
+    handler: handlers/notification.listNotificationTasks
+    description: Function to list notifications
+    events:
+      - http:
+          path: notification/{user_id}
+          method: get
+  SQSreceiver:
+    handler: handlers/sqs-receiver.sqsReceiver
+    timeout: 30
+    events:
+      - sqs:
+          arn:
+            Fn::GetAtt:
+              - whatsAppMessageQueue
+              - Arn
 #    Define function environment variables here
 #    environment:
 #      variable2: value2
@@ -129,21 +168,51 @@ resources:
             KeyType: HASH
           - AttributeName: template_id
             KeyType: RANGE
-        ProvisionedThroughput:
-          ReadCapacityUnits: 1
-          WriteCapacityUnits: 1
+        BillingMode: PAY_PER_REQUEST
+    notificationTaskTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.notificationTaskTableName}
+        AttributeDefinitions:
+          - AttributeName: user_id
+            AttributeType: S
+          - AttributeName: notification_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: user_id
+            KeyType: HASH
+          - AttributeName: notification_id
+            KeyType: RANGE
+        BillingMode: PAY_PER_REQUEST
     s3recipientBucket:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:custom.bucketName}
+        BucketEncryption:
+          ServerSideEncryptionConfiguration: 
+            - ServerSideEncryptionByDefault:
+                SSEAlgorithm: AES256
+        PublicAccessBlockConfiguration:
+          BlockPublicAcls: false
+          BlockPublicPolicy: true
+          IgnorePublicAcls: true
+          RestrictPublicBuckets: true
         CorsConfiguration:
           CorsRules:
             - AllowedMethods:
                 - GET
                 - POST
+                - PUT
               AllowedOrigins:
                 - "*"
-#  Outputs:
-#     NewOutput:
-#       Description: "Description for the output"
-#       Value: "Some output value"
+              AllowedHeaders:
+                - "*"
+    whatsAppMessageQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:custom.queueName}
+  Outputs:
+    SQSUrl:
+      Description: "SQS Url"
+      Value: 
+        "Ref": whatsAppMessageQueue

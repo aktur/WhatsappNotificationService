@@ -1,0 +1,342 @@
+{
+	"info": {
+		"_postman_id": "af2809f9-2581-4046-8132-f34680ddff02",
+		"name": "Templates",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Create Template",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "bbecfdeb-3d98-4ccb-b68d-b972a69a403a",
+						"exec": [
+							"let jsonData = pm.response.json();",
+							"pm.environment.set(\"templateId\", jsonData.body.template_id);",
+							"pm.environment.set(\"userId\", jsonData.body.user_id);",
+							"",
+							"pm.test(\"Response contains template_id\", function () {",
+							"    let response = pm.response.json();",
+							"    pm.expect(response).to.have.ownProperty(\"body\"); ",
+							"    let body = response.body;",
+							"    pm.expect(body).to.have.ownProperty(\"template_id\"); ",
+							"});",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"template_name\": \"{{$randomAbbreviation}}\",\n    \"user_id\": \"{{$randomInt}}\",\n    \"message_text\": \"{{$randomCatchPhrase}}\",\n    \"idempotent_key\": \"{{$isoTimestamp}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://{{endpoint}}/templates",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"templates"
+					],
+					"query": [
+						{
+							"key": "template_name",
+							"value": "postman",
+							"disabled": true
+						},
+						{
+							"key": "message_text",
+							"value": "This is example text",
+							"disabled": true
+						},
+						{
+							"key": "user_id",
+							"value": "6969",
+							"disabled": true
+						}
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Details Template",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://{{endpoint}}/templates/{{userId}}/{{templateId}}",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"templates",
+						"{{userId}}",
+						"{{templateId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Template",
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"message_text\": \"This is update template test\",\n    \"template_name\": \"Third\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://{{endpoint}}/templates/{{userId}}/{{templateId}}",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"templates",
+						"{{userId}}",
+						"{{templateId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "List Templates",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "bf018f29-a6ed-40c6-b955-84dc3d3be975",
+						"exec": [
+							"pm.test(\"Items Count is greater than 0\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.body.Count).to.gt(0);",
+							"});",
+							"",
+							"let jsonData = pm.response.json();",
+							"if(jsonData.body.Count>0){",
+							"  pm.environment.set(\"templateId\", jsonData.body.Items[0].template_id);",
+							"};",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://{{endpoint}}/templates/{{userId}}",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"templates",
+						"{{userId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Signed URL",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "5eae4e61-6a86-4500-bcda-1d7216331d96",
+						"exec": [
+							"pm.test(\"Response includes Url\", function () {",
+							"    pm.expect(pm.response.text()).to.include(\"url\");",
+							"});",
+							"",
+							"let jsonData = pm.response.json();",
+							"pm.environment.set(\"signedUrl\", jsonData.url);",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"file_name\": \"{{$randomFileName}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://{{endpoint}}/upload-url/{{userId}}",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"upload-url",
+						"{{userId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Send recipeint.csv",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {}
+			},
+			"request": {
+				"method": "PUT",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "michal, 12355",
+					"options": {
+						"raw": {
+							"language": "text"
+						}
+					}
+				},
+				"url": {
+					"raw": "{{signedUrl}}",
+					"host": [
+						"{{signedUrl}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Post notification",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"message\": \"{{$randomBs}}\",\n    \"recipient\": \"{{$randomPhoneNumber}}\",\n    \"user_id\": \"{{userId}}\"\n}",
+					"options": {
+						"raw": {
+							"language": "javascript"
+						}
+					}
+				},
+				"url": {
+					"raw": "https://{{endpoint}}/notification",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"notification"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "List notifications",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "44639427-7d31-48b6-9897-d42a720a1590",
+						"exec": [
+							"pm.test(\"Not empty list\", function () {",
+							"    var jsonData = pm.response.json();",
+							"    pm.expect(jsonData.data.length).to.gt(0);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "https://{{endpoint}}/notification/{{userId}}",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"notification",
+						"{{userId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Delete Template",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "https://{{endpoint}}/templates/{{userId}}/{{templateId}}",
+					"protocol": "https",
+					"host": [
+						"{{endpoint}}"
+					],
+					"path": [
+						"templates",
+						"{{userId}}",
+						"{{templateId}}"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"id": "bcf65493-69a3-401b-9958-67167fbe5c5b",
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"id": "b282a5df-5058-4629-a93b-941ec987ae2f",
+				"type": "text/javascript",
+				"exec": [
+					"pm.test(\"Status code is OK\", function () {",
+					"    pm.response.to.have.status(200);",
+					"});"
+				]
+			}
+		}
+	],
+	"protocolProfileBehavior": {}
+}

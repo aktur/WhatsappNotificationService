@@ -3,14 +3,16 @@
 const status = require('http-status');
 const Joi = require('@hapi/joi');
 const AWS = require("aws-sdk");
-const { BAD_REQUEST, NOT_FOUND } = require('http-status');
+const { BAD_REQUEST, NOT_FOUND, OK } = require('http-status');
 const docClient = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
-const s3 = new AWS.S3();
+const s3 = new AWS.S3({signatureVersion: "v4"}); // need this for ignoring contents type is signing
 const table = process.env.DDB_TEMPLATES_TABLE_NAME;
 const bucket = process.env.S3_BUCKET_NAME;
+const { errCatching } = require('./functions.js');
 
 module.exports.getSignedUrl = async event => {
   try{
+    const { user_id } = event.pathParameters;
     var body = JSON.parse(event.body);
 
     const schema = Joi.object({
@@ -25,19 +27,18 @@ module.exports.getSignedUrl = async event => {
       throw(error);
     }
 
-    var params = {Bucket: bucket, Key: body.file_name, Expires: 60};
-    var url = s3.getSignedUrl('putObject', params);
+    const params = {Bucket: bucket, Key: `${user_id}/${body.file_name}`, Expires: 3600};
+    const url = s3.getSignedUrl('putObject', params);
+
     console.log('The URL is', url);
 
     return {
-      statusCode: 200,
+      statusCode: OK,
       body: JSON.stringify(
         {
-          status: status[200],
+          status: status[OK],
           url: url,
-          body: body,
-          file_name: body.file_name,
-          event: event,
+          params: params,
         },
         null,
         2
@@ -78,10 +79,10 @@ module.exports.createTemplates = async event => {
 
     if(scan.Count > 0){
       return {
-        statusCode: 200,
+        statusCode: OK,
         body: JSON.stringify(
           {
-            status: status[200],
+            status: status[OK],
             body: scan.Items[0],
           },
           null,
@@ -321,21 +322,4 @@ function validateInputData(body){
     throw(error);
   }
   return body;
-}
-
-function errCatching(err){
-  console.error("Catching ERROR: ", err);
-  let statusCode = BAD_REQUEST;
-  return {
-    statusCode: statusCode,
-    body: JSON.stringify(
-      {
-        statusCode: statusCode,
-        status: status[statusCode],
-        body: err,
-      },
-      null,
-      2
-    ),
-  };
 }
