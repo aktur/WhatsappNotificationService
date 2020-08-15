@@ -26,7 +26,7 @@ module.exports.createNotification = async event => {
       .or('message', 'message_template_id')
       .or('recipient', 'recipient_list_file');
 
-    var { error, value } = schema.validate(body);
+    var { error, value } = schema.validate(body, {abortEarly: false});
     if (error) {
       console.log(JSON.stringify(error));
       console.log(JSON.stringify(value));
@@ -37,7 +37,7 @@ module.exports.createNotification = async event => {
     if(body.recipient_list_file){
       throw "TODO recipient_list_file"
     }
-    
+
     if (body.message_template_id) {
       console.log("Getting message from template ", body.message_template_id);
       let params = {
@@ -113,6 +113,7 @@ module.exports.createNotification = async event => {
 module.exports.listNotificationTasks = async event => {
   try {
     const user_id = event.pathParameters.user_id;
+    Joi.assert(user_id, Joi.number().positive());
 
     const params = {
       TableName: table,

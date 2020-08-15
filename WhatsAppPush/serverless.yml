@@ -38,7 +38,6 @@ provider:
   environment:
     DDB_TEMPLATES_TABLE_NAME: ${self:custom.templatesTableName}
     S3_BUCKET_NAME: ${self:custom.bucketName}
-#    SQS_QUEUE_NAME: ${self:custom.queueName}
     SQS_QUEUE_URL: 
       "Ref": whatsAppMessageQueue
     DDB_NOTIFICATION_TASK_TABLE_NAME: ${self:custom.notificationTaskTableName}
@@ -59,14 +58,14 @@ provider:
         - "Fn::GetAtt" : ["notificationTaskTable", "Arn"]
     - Effect: "Allow"
       Action:
-        - s3:*
+        - s3:PutObject
       Resource:
-        - { "Fn::GetAtt": ["s3recipientBucket", "Arn"] }
+        -  "Fn::Join": ["/", ["Fn::GetAtt": ["s3recipientBucket", "Arn"], "*"]]
     - Effect: "Allow"
       Action:
         - sqs:*
       Resource:
-        - "*"
+        - "Fn::GetAtt": ["whatsAppMessageQueue", "Arn"]
 
 # you can define service wide environment variables here
 #  environment:
@@ -188,12 +187,13 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:custom.bucketName}
+        AccessControl: Private
         BucketEncryption:
           ServerSideEncryptionConfiguration: 
             - ServerSideEncryptionByDefault:
                 SSEAlgorithm: AES256
         PublicAccessBlockConfiguration:
-          BlockPublicAcls: false
+          BlockPublicAcls: true
           BlockPublicPolicy: true
           IgnorePublicAcls: true
           RestrictPublicBuckets: true
@@ -216,3 +216,4 @@ resources:
       Description: "SQS Url"
       Value: 
         "Ref": whatsAppMessageQueue
+
