@@ -59,15 +59,19 @@ module.exports.createNotification = async event => {
     }
 
     var sqsparams = {
-      DelaySeconds: 10,
       MessageAttributes: {
         "Recipient": {
           DataType: "String",
           StringValue: body.recipient
+        },
+        "userId": {
+          DataType: "String",
+          StringValue: body.user_id
         }
       },
       MessageBody: body.message,
-      QueueUrl: process.env.SQS_QUEUE_URL
+      QueueUrl: process.env.SQS_QUEUE_URL,
+      MessageGroupId: "Whatsapp-Notifications"
     };
 
     console.log("send sqs ", sqsparams);
@@ -132,7 +136,6 @@ module.exports.listNotificationTasks = async event => {
           status: status[OK],
           user_id: user_id,
           data: result.Items || [],
-          //          event: event,
         },
         null,
         2

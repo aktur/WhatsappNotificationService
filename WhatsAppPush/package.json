@@ -11,7 +11,10 @@
   "dependencies": {
     "@hapi/joi": "^17.1.1",
     "http-status": "^1.4.2",
+    "twilio": "^3.48.2",
     "uuid": "^8.3.0"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "serverless-aws-documentation": "^1.1.0"
+  }
 }

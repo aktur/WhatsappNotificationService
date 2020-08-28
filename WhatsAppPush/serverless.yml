@@ -1,27 +1,16 @@
-# Welcome to Serverless!
-#
-# This file is the main config file for your service.
-# It's very minimal at this point and uses default values.
-# You can always add more config options for more control.
-# We've included some commented out config examples here.
-# Just uncomment any of them to get that config option.
-#
-# For full config options, check the docs:
-#    docs.serverless.com
-#
-# Happy Coding!
-
 service: whatsapppush
 
 custom:
   templatesTableName: Templates
   bucketName: whatsapppush-recipient-bucket
-  queueName: WhatsAppMessageQueue
+  queueName: WhatsAppMessageQueue.fifo
   notificationTaskTableName: NotificationTask
+  statusLogsTableName: StatusTable
+  callbackPath: notification/status
 
 # app and org for use with dashboard.serverless.com
-#app: your-app-name
-#org: your-org-name
+org: aktur
+app: whatsapp
 
 # You can pin your service to only deploy with a specific Serverless version
 # Check out our docs for more details
@@ -32,14 +21,14 @@ provider:
   runtime: nodejs12.x
 
   # you can overwrite defaults here
-  #  stage: dev
-  #  region: us-east-1
+  stage: dev
+  region: us-east-1
 
   environment:
     DDB_TEMPLATES_TABLE_NAME: ${self:custom.templatesTableName}
     S3_BUCKET_NAME: ${self:custom.bucketName}
     SQS_QUEUE_URL: 
-      "Ref": whatsAppMessageQueue
+      Ref: whatsAppMessageQueue
     DDB_NOTIFICATION_TASK_TABLE_NAME: ${self:custom.notificationTaskTableName}
 
   # you can add statements to the Lambda function's IAM Role here
@@ -54,22 +43,22 @@ provider:
         - dynamodb:UpdateItem
         - dynamodb:DeleteItem
       Resource:
-        - { "Fn::GetAtt": ["templatesTable", "Arn"] }
+        - "Fn::GetAtt": ["templatesTable", "Arn"]
         - "Fn::GetAtt" : ["notificationTaskTable", "Arn"]
+        - "Fn::GetAtt" : ["statusLogsTable", "Arn"]
     - Effect: "Allow"
       Action:
         - s3:PutObject
       Resource:
-        -  "Fn::Join": ["/", ["Fn::GetAtt": ["s3recipientBucket", "Arn"], "*"]]
+        - "Fn::Join": ["/", ["Fn::GetAtt": ["s3recipientBucket", "Arn"], "*"]]
     - Effect: "Allow"
       Action:
         - sqs:*
       Resource:
         - "Fn::GetAtt": ["whatsAppMessageQueue", "Arn"]
 
-# you can define service wide environment variables here
-#  environment:
-#    variable1: value1
+plugins:
+  - serverless-aws-documentation
 
 # you can add packaging information here
 #package:
@@ -137,8 +126,9 @@ functions:
       - http:
           path: notification/{user_id}
           method: get
-  SQSreceiver:
-    handler: handlers/sqs-receiver.sqsReceiver
+  NotificationProcessor:
+    handler: handlers/sqs-receiver.process
+    description: Process SQS messages to Twilio WhatsApp
     timeout: 30
     events:
       - sqs:
@@ -146,11 +136,28 @@ functions:
             Fn::GetAtt:
               - whatsAppMessageQueue
               - Arn
-#    Define function environment variables here
-#    environment:
-#      variable2: value2
+          batchSize: 1
+    environment:
+      DDB_STATUS_LOGS_TABLE_NAME: ${self:custom.statusLogsTableName}
+      TWILIO_ACCOUNT_SID: ${param:twilioAccountSid}
+      TWILIO_ACCOUNT_AUTH_TOKEN: ${param:twilioAuthToken}
+      TWILIO_CALLBACK_URL:
+        Fn::Join:
+          - ""
+          - - "https://"
+            - Ref: ApiGatewayRestApi
+            - ".execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}/${self:custom.callbackPath}"
+  MessageStatusCallBack:
+    handler: handlers/sqs-receiver.statusCallback
+    description: Twilio Callback endpoint
+    events:
+      - http:
+          path: ${self:custom.callbackPath}
+          method: post
+    environment:
+      DDB_STATUS_LOGS_TABLE_NAME: ${self:custom.statusLogsTableName}
 
-# you can add CloudFormation resource templates here
+# CloudFormation resource templates here
 resources:
   Resources:
     templatesTable:
@@ -183,6 +190,21 @@ resources:
           - AttributeName: notification_id
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
+    statusLogsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.statusLogsTableName}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: notification_id
+            AttributeType: S
+          - AttributeName: log_id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: notification_id
+            KeyType: HASH
+          - AttributeName: log_id
+            KeyType: RANGE
     s3recipientBucket:
       Type: AWS::S3::Bucket
       Properties:
@@ -211,9 +233,10 @@ resources:
       Type: AWS::SQS::Queue
       Properties:
         QueueName: ${self:custom.queueName}
+        FifoQueue: true
+        ContentBasedDeduplication: true
   Outputs:
     SQSUrl:
       Description: "SQS Url"
       Value: 
         "Ref": whatsAppMessageQueue
-
