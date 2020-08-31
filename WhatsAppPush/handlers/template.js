@@ -61,7 +61,8 @@ module.exports.createTemplates = async event => {
 
     var params = {
       TableName: table,
-      FilterExpression : 'user_id = :user_id and idempotent_key = :idempotent_key',
+      KeyConditionExpression: 'user_id = :user_id',
+      FilterExpression : 'idempotent_key = :idempotent_key',
       ExpressionAttributeValues : {
         ':user_id' : body.user_id,
         ':idempotent_key' : body.idempotent_key
@@ -69,10 +70,10 @@ module.exports.createTemplates = async event => {
     };
 
     var scan = {};
-    await docClient.scan(params)
+    await docClient.query(params)
       .promise()
       .then(res => {
-        console.log("Scan results: ", JSON.stringify(res));
+        console.log("Query results: ", JSON.stringify(res));
         scan = res
       })
       .catch(err => {throw(err)});
@@ -277,10 +278,10 @@ module.exports.list = async event => {
 
     const params = {
       TableName: table,
-      FilterExpression : 'user_id = :user_id',
+      KeyConditionExpression: 'user_id = :user_id',
       ExpressionAttributeValues : {':user_id' : user_id}
     };
-    await docClient.scan(params)
+    await docClient.query(params)
       .promise()
       .then(res => {body = res})
       .catch(err => {throw(err)});

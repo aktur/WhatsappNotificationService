@@ -5,10 +5,14 @@ const Joi = require('@hapi/joi');
 const AWS = require("aws-sdk");
 const { OK } = require('http-status');
 const docClient = new AWS.DynamoDB.DocumentClient({ apiVersion: '2012-08-10' });
-const sqs = new AWS.SQS({ apiVersion: '2012-11-05' });
-const s3 = new AWS.S3();
+const S3 = new AWS.S3();
 const { errCatching } = require('./functions.js');
+const { enqueueMessage } = require("../libs/sqs-client.js");
 const table = process.env.DDB_NOTIFICATION_TASK_TABLE_NAME;
+const uuid = require("uuid");
+const csvToJson = require("csvtojson");
+const xlsx = require("node-xlsx");
+
 
 module.exports.createNotification = async event => {
   try {
@@ -26,16 +30,11 @@ module.exports.createNotification = async event => {
       .or('message', 'message_template_id')
       .or('recipient', 'recipient_list_file');
 
-    var { error, value } = schema.validate(body, {abortEarly: false});
+    var { error, value } = schema.validate(body, { abortEarly: false });
     if (error) {
       console.log(JSON.stringify(error));
       console.log(JSON.stringify(value));
       throw (error);
-    }
-
-    // TODO process recipient file from S3 bucket
-    if(body.recipient_list_file){
-      throw "TODO recipient_list_file"
     }
 
     if (body.message_template_id) {
@@ -58,32 +57,29 @@ module.exports.createNotification = async event => {
         });
     }
 
-    var sqsparams = {
-      MessageAttributes: {
-        "Recipient": {
-          DataType: "String",
-          StringValue: body.recipient
-        },
-        "userId": {
-          DataType: "String",
-          StringValue: body.user_id
-        }
-      },
-      MessageBody: body.message,
-      QueueUrl: process.env.SQS_QUEUE_URL,
-      MessageGroupId: "Whatsapp-Notifications"
-    };
+    body.notification_id = uuid.v1();
 
-    console.log("send sqs ", sqsparams);
-    await sqs.sendMessage(sqsparams, function (err, data) {
-      if (err) {
-        console.log("Error", err);
-        throw (err);
-      } else {
-        console.log("Success", body.notification_id = data.MessageId);
-      }
-    }).promise()
-      .catch(e => { throw (e) });
+    const recipients = body.recipient
+      ? [body.recipient]
+      : await getRecipientsFromFile(`${body.user_id}/${body.recipient_list_file}`);
+
+    // Publish message over queue
+    if (body.message && recipients.length) {
+      console.log("Recipients: ", recipients);
+      const enqueueMessagesJobs = recipients.map(
+        async (phone_number) => {
+          console.log("phone_number: ", phone_number);
+          await enqueueMessage({
+            notification_id: body.notification_id,
+            user_id: body.user_id,
+            sent_from: "+14155238886", // Twilio Sandbox number
+            sent_to: phone_number,
+            message: body.message,
+          })}
+      );
+
+      await Promise.all(enqueueMessagesJobs);
+    }
 
     body.created_at = Date.now();
     const ddbparams = {
@@ -101,7 +97,6 @@ module.exports.createNotification = async event => {
       body: JSON.stringify(
         {
           status: status[OK],
-          notification_id: body.notification_id,
           body: body
         },
         null,
@@ -145,4 +140,76 @@ module.exports.listNotificationTasks = async event => {
   catch (err) {
     return errCatching(err);
   }
+}
+
+async function getRecipientsFromFile(recipient_list_file) {
+  console.log("Getting recipients from file: ",recipient_list_file);
+  const fileType = recipient_list_file.substr(
+    recipient_list_file.lastIndexOf(".") + 1
+  );
+
+  let recipient = [];
+
+  if (fileType.toLowerCase() === "csv") {
+    recipient = await getRecipientsFromCSV(recipient_list_file);
+  } else if (fileType.toLowerCase() === "xlsx") {
+    recipient = await getRecipientsFromXLSX(recipient_list_file);
+  }
+
+  return recipient;
+}
+
+async function getRecipientsFromCSV(filePath) {
+  const recipients = [];
+
+  const params = {
+    Bucket: process.env.S3_BUCKET_NAME,
+    Key: filePath,
+  };
+
+  // get csv file and create stream
+  console.log("about to open S3 bucket");
+  const stream = S3.getObject(params).createReadStream();
+  console.log("opened");
+  // convert csv file (stream) to JSON format data
+  const json = await csvToJson().fromStream(stream);
+  console.log("contents: ",json); // TODO when bucket does not exists thet we have 500
+  for (let index = 0, len = json.length; index < len; index++) {
+    recipients.push(json[index]["Phone Number"]);
+  }
+
+  return recipients;
+}
+
+async function getRecipientsFromXLSX(filePath) {
+  const recipients = [];
+
+  const params = {
+    Bucket: process.env.RECIPIENT_S3_BUCKET_NAME,
+    Key: filePath,
+  };
+
+  return new Promise((resolve, reject) => {
+    // get csv file and create stream
+    const file = S3.getObject(params).createReadStream();
+    const buffers = [];
+
+    file.on("data", (data) => {
+      buffers.push(data);
+    });
+
+    file.on("end", () => {
+      const buffer = Buffer.concat(buffers);
+      const workbook = xlsx.parse(buffer);
+      const firstSheet = workbook[0].data;
+      firstSheet.shift();
+
+      firstSheet.forEach((data) => {
+        data[0] && recipients.push(data[0]);
+        return data;
+      });
+
+      resolve(recipients);
+    });
+  });
 }

@@ -2,7 +2,7 @@ service: whatsapppush
 
 custom:
   templatesTableName: Templates
-  bucketName: whatsapppush-recipient-bucket
+  bucketName: whatsapppush-recipient-bucket-${self:provider.stage}
   queueName: WhatsAppMessageQueue.fifo
   notificationTaskTableName: NotificationTask
   statusLogsTableName: StatusTable
@@ -21,15 +21,16 @@ provider:
   runtime: nodejs12.x
 
   # you can overwrite defaults here
-  stage: dev
+  stage: prod
   region: us-east-1
 
   environment:
     DDB_TEMPLATES_TABLE_NAME: ${self:custom.templatesTableName}
     S3_BUCKET_NAME: ${self:custom.bucketName}
-    SQS_QUEUE_URL: 
+    SQS_QUEUE_URL:
       Ref: whatsAppMessageQueue
     DDB_NOTIFICATION_TASK_TABLE_NAME: ${self:custom.notificationTaskTableName}
+    DDB_STATUS_LOGS_TABLE_NAME: ${self:custom.statusLogsTableName}
 
   # you can add statements to the Lambda function's IAM Role here
   iamRoleStatements:
@@ -44,11 +45,12 @@ provider:
         - dynamodb:DeleteItem
       Resource:
         - "Fn::GetAtt": ["templatesTable", "Arn"]
-        - "Fn::GetAtt" : ["notificationTaskTable", "Arn"]
-        - "Fn::GetAtt" : ["statusLogsTable", "Arn"]
+        - "Fn::GetAtt": ["notificationTaskTable", "Arn"]
+        - "Fn::GetAtt": ["statusLogsTable", "Arn"]
     - Effect: "Allow"
       Action:
         - s3:PutObject
+        - s3:GetObject
       Resource:
         - "Fn::Join": ["/", ["Fn::GetAtt": ["s3recipientBucket", "Arn"], "*"]]
     - Effect: "Allow"
@@ -138,7 +140,6 @@ functions:
               - Arn
           batchSize: 1
     environment:
-      DDB_STATUS_LOGS_TABLE_NAME: ${self:custom.statusLogsTableName}
       TWILIO_ACCOUNT_SID: ${param:twilioAccountSid}
       TWILIO_ACCOUNT_AUTH_TOKEN: ${param:twilioAuthToken}
       TWILIO_CALLBACK_URL:
@@ -156,6 +157,27 @@ functions:
           method: post
     environment:
       DDB_STATUS_LOGS_TABLE_NAME: ${self:custom.statusLogsTableName}
+  ListStatusLogs:
+    handler: handlers/status.status
+    description: Stage 6 status
+    events:
+      - http:
+          path: status/{notification_id}
+          method: get
+  DetailsStatuslog:
+    handler: handlers/status.details
+    description: Stage 6 details status log
+    events:
+      - http:
+          path: status/{notification_id}/{log_id}
+          method: get
+  StatusLogSummary:
+    handler: handlers/status.summary
+    description: summary of message delivery count by its status
+    events:
+      - http:
+          path: status/summary/{notification_id}
+          method: get
 
 # CloudFormation resource templates here
 resources:
@@ -211,7 +233,7 @@ resources:
         BucketName: ${self:custom.bucketName}
         AccessControl: Private
         BucketEncryption:
-          ServerSideEncryptionConfiguration: 
+          ServerSideEncryptionConfiguration:
             - ServerSideEncryptionByDefault:
                 SSEAlgorithm: AES256
         PublicAccessBlockConfiguration:
@@ -238,5 +260,5 @@ resources:
   Outputs:
     SQSUrl:
       Description: "SQS Url"
-      Value: 
+      Value:
         "Ref": whatsAppMessageQueue
