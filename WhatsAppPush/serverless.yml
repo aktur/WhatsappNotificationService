@@ -58,6 +58,7 @@ provider:
         - sqs:*
       Resource:
         - "Fn::GetAtt": ["whatsAppMessageQueue", "Arn"]
+  logRetentionInDays: 14
 
 plugins:
   - serverless-aws-documentation
